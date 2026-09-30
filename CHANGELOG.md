@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## Unreleased
+
+### 🩹 Fixes
+
+- **auth:** Make URL credentials consistent across `parseAuth`/`parseURL` and `$URL`, and stop applying query-string plus rules to passwords
+
+  Before this fix the two public entry points disagreed on credentials:
+
+  - `parseAuth` (reached via `parseAuth(parseURL(url).auth)`) decoded the password with an extra `replaceAll("+", " ")`, so a **literal `+` in the password came back as a space**. That conversion belongs to the `application/x-www-form-urlencoded` query component only; in the RFC 3986 userinfo component `+` is a literal plus and spaces are carried as `%20`.
+  - `new $URL(url)` additionally ran `decode(parsed.auth)` in its constructor, while its `username`/`password` getters call `parseAuth` (which decodes again). Credentials containing percent-encoded sequences (`%2B`, `%25`, non-ASCII UTF-8 such as `%E5%AF%86%E7%A0%81`) were therefore **decoded twice**: `%2525` collapsed one level too far and `$URL` reported a different password than `parseAuth(parseURL(url).auth)`. Re-serializing through `$URL#href` (`encodeURIComponent` on the already-decoded value) could then shift or stack percent encoding.
+
+  Shared behavior now lives in the single `parseAuth` path:
+
+  - `parseAuth` percent-decodes username/password exactly once and no longer rewrites `+` to a space; the first-colon split is unchanged (no password -> `""`, empty password -> `""`, extra colons after the first are ignored as before).
+  - `$URL` stores `auth` as the raw component from `parseURL`; its `username`, `password` and `encodedAuth` getters decode/encode through `parseAuth` exactly once.
+  - `stringifyParsedURL` already emitted `auth` verbatim and is unchanged: mutating one field (e.g. `host`) leaves username, host, pathname, search and hash byte-stable, with no repeated percent encoding.
+  - `parseQuery`/`stringifyQuery`, `encodeQueryValue`/`decodeQueryValue` and friends are untouched: a literal `+` in `?a=b+c` still decodes to a space and re-encodes to `+`, while `%2B` still decodes to a literal plus.
+
+  URL shapes whose observable behavior changes (the previously incorrect results):
+
+  - Passwords containing a literal `+` (e.g. `https://u:p+ss@h`) previously read back as `"p ss"`; they now read `"p+ss"`.
+  - Percent-encoded credentials read through `new $URL` were double-decoded (`%2B` became a space, `%2525` became `%25`); they now decode exactly once and agree with `parseAuth`.
+  - `$URL#href` for such inputs is now idempotent across parse/href/parse instead of drifting between `+`, space and `%25` encodings. Literal `+` in credentials is normalized to `%2B` by `encodedAuth` (pre-existing `encodeURIComponent` convention) and decodes back to `+` stably.
+
+  Credentials without `+` or percent escapes, credentials with no/empty/multiple-colon passwords, and all query strings keep their previous behavior.
+
+### ✅ Tests
+
+- Add `test/auth.test.ts` regression suite: literal vs percent-encoded credential spellings (`+`, space, non-ASCII, `%`) compared as groups across `parseAuth`, `parseURL` and `new $URL`; parse/stringify/parse stability through `stringifyParsedURL` and `$URL#href`; single-field mutation leaving other components byte-stable; guards for no password, empty password, multiple colons and Unicode credentials; and guards proving query literal/encoded plus rules are unaffected. All 35 new cases fail on the previous implementation (minus the two guard expectations documenting pre-existing conventions) and pass with the fix; full suite is 526/526 green including lint and typecheck.
+
 ## v1.6.4
 
 [compare changes](https://github.com/unjs/ufo/compare/v1.6.3...v1.6.4)
