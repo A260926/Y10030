@@ -31,7 +31,7 @@ export class $URL implements URL {
 
     this.protocol = decode(parsed.protocol);
     this.host = decode(parsed.host);
-    this.auth = decode(parsed.auth);
+    this.auth = parsed.auth || "";
     this.pathname = decodePath(parsed.pathname);
     this.query = parseQuery(parsed.search);
     this.hash = decode(parsed.hash);

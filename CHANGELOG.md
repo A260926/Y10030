@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## Unreleased
+
+### 🩹 Fixes
+
+- **parseAuth, $URL:** Make URL credentials mean the same thing across parse, object construction, serialization, and re-parse.
+
+  **Why the two public entries disagreed:** `parseAuth` decoded the password with query-string semantics (`+` → space), while userinfo has no such rule — so a literal `+` and its percent-encoded form `%2B` produced different passwords. On top of that, the `$URL` constructor decoded the *entire* auth string before `parseAuth` split it on `:`, so `%2B` turned into `+` and then into a space, and `%3A` turned into a real separator that truncated the password. As a result `parseAuth(parseURL(url).auth)` and `new $URL(url).password` returned different logical values for the same address.
+
+  **URL shapes that could be corrupted:** credentials containing a literal `+` or `%2B` (password silently changed to/contained a space), `%3A` in the password (truncated at the decoded colon when read via `$URL`), and any parse → stringify → parse round trip through `$URL.href`, which re-encoded `+` as `%20` instead of `%2B`.
+
+  **The fix:** `parseAuth` now decodes username and password with plain percent-decoding (userinfo rules), and `$URL` keeps the raw auth string from `parseURL` so `parseAuth` remains the single place that splits and decodes credentials. Query string handling (`+` ↔ space in `parseQuery`/`stringifyQuery`) is unchanged, as are the existing conventions for missing passwords, empty passwords, and multiple colons.
+
+  **Regression evidence:** `test/auth.test.ts` covers `parseURL`, `new $URL`, and `stringifyParsedURL`; compares literal vs percent-encoded forms of the same credentials (`+`, space, non-ASCII, `%3A`); asserts parse/stringify/parse stability with no double-encoding of untouched fields; and guards the query `+` contract plus the no-password/empty-password/multiple-colon/Unicode conventions. All 513 tests pass via `pnpm test`.
+
 ## v1.6.4
 
 [compare changes](https://github.com/unjs/ufo/compare/v1.6.3...v1.6.4)

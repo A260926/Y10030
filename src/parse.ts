@@ -134,7 +134,7 @@ export function parseAuth(input = ""): ParsedAuth {
   const [username, password] = input.split(":");
   return {
     username: decode(username),
-    password: decode(password?.replaceAll("+", " ")),
+    password: decode(password),
   };
 }
 
